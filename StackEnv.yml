@@ -1,0 +1,16 @@
+---
+- name: Create AWS env stack
+  cloudformation:
+    stack_name: "StackEnv"-{{ environment }}
+    state: present
+    region: "{{region}}"
+    template_body: "{lookup('template', 'aws_env.j2') }}"
+    template_parameters:
+      CidrIPBlock: "{{ cidr }}"
+      PrivateIPAZa: "{{ PrivateIPAZa }}"
+      PrivateIPAZb: "{{ PrivateIPAZb }}"
+      PublicIPAZa: "{{ PublicIPAZa }}"
+      PublicIPAZb: "{{ PublicIPAZb }}"
+      InstanceType: "{{ InstanceType }}"
+      KeyPair: "{{ KeyName }}"
+  register: create_stackenv

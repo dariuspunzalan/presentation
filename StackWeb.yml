@@ -1,0 +1,16 @@
+---
+- name: Deploy Web and DB stack
+  cloudformation:
+    stack_name: "StackWeb-{{ environment }}"
+    state: present
+    region: "{{region}}"
+    template_body: "{lookup('template', 'web_stack.j2') }}"
+    template_parameters:
+      CidrIPBlock: "{{ cidr }}"
+      PrivateIPAZa: "{{ PrivateIPAZa }}"
+      PrivateIPAZb: "{{ PrivateIPAZb }}"
+      PublicIPAZa: "{{ PublicIPAZa }}"
+      PublicIPAZb: "{{ PublicIPAZb }}"
+      InstanceType: "{{ InstanceType }}"
+      KeyPair: "{{ KeyName }}"
+  register: create_stackenv

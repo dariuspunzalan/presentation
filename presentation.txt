@@ -1,0 +1,64 @@
+*page
+What are the our current challenges?
+1. How long does it take to do a release?
+2. 
+3. How much are we behind in patch update?
+4. Are we able to scale up or down our services?
+5. How long does it take to provision system?
+
+notes:
+These are just the basic requirement to an effective continous Delivery. There are few other tools that can be added to improve the integration/testing.
+A better process beats the best tools.
+
+*page
+Introduction to AWS CloudFormation
+To provision AWS resources in the cloud environment thru a text file.
+The text file describes your infrastructure which enables to replicate it easier
+
+sample:
+
+*page
+Ansible
+Note: started as configuration management, intention to keep the systems in sane condition.
+It is now, provisioning, Application Deployment, continous delivery and orchestration
+
+Ansible folder structure:
+invetory/
+  production
+  staging
+  
+group_vars/
+  group1.yml
+  group2.yml
+  
+host_vars/
+  hostname1.yml
+  hostname2.yml
+  
+library/
+module_utils/
+filter_plugins/
+
+site.yml
+webservers.yml
+dbservers.yml
+
+roles/
+  common/
+    tasks/
+      main.yml
+    handlers/
+      main.yml
+    templates/
+      ntp.conf.j2
+    vars/
+      main.yml
+    defaults/
+      main.yml
+      
+      
+
+*page
+Git
+
+
