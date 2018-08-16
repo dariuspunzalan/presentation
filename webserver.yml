@@ -1,0 +1,281 @@
+Description: CloudFormation Template for WebStack
+# Parameter settings
+Parameters:
+  EnvStack:
+    Description: VPC Stack Name
+    Type: String
+    Default: WebStackEnv
+    
+  AMIID:
+    Description: AMI ID of EC2 Instance for Web Server
+    Type: String
+    Default: ami-dda36dbf
+    #Default: "ami-43874721"
+  InstanceType:
+    Description: Instance Type to use for Web Server
+    Type: String
+    Default: "t2.micro"
+    
+    
+  KeyPair:
+    Description: KeyPair to be used
+    Type: String
+    Default: WebStack
+    
+  SSLCertificate:
+    Description: ARN of SSL Certificate for Load Balancercer
+    Type: String
+    Default: "arn:aws:acm:ap-southeast-2:676713518056:certificate/3ab35485-eef4-4114-9812-71215968b5ae"
+
+  DBName:
+    Description: Database Name
+    Type: String
+    Default: LabDB
+    
+  DBAllocatedStorage:
+    Description: DB Size GB
+    Type: Number
+    Default: 20
+    
+  DBInstanceClass:
+    Description: DB Instance Class
+    Type: String
+    Default: "db.t2.micro"
+    
+  DBUser:
+    Description: Database Master User
+    Type: String
+    Default: dbuser
+    
+  DBPassword:
+    Description: Database Master Password
+    Type: String
+    NoEcho: true
+    Default: "StrongPass"
+    
+  DBSnapshot:
+    Description: Snapshot of DB
+    Type: String
+    Default: arn:aws:rds:ap-southeast-2:676713518056:snapshot:WebStackdb
+    
+# Mapping of variables
+#Mappings:
+#Empty Mapping
+# Conditions and Logic
+#Conditions:
+
+
+# Resource Definition
+Resources:
+
+#Security Group
+  LBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${AWS::StackName}-ELBSG"
+      GroupDescription: Security Group for Load Balancer
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvStack}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: 'Name'
+          Value: !Sub "${AWS::StackName}-ELB-SG"
+            
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: LBSecurityGroup
+    Properties:
+      GroupName: !Sub "${AWS::StackName}-WebSG"
+      GroupDescription: Security Group for Web server
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvStack}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "192.168.0.0/23"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref LBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref LBSecurityGroup
+
+      Tags:
+        - Key: 'Name'
+          Value: !Sub "${AWS::StackName}-Web-SG"
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${AWS::StackName}-DBSG"
+      GroupDescription: Security Group for Database server
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvStack}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref WebSecurityGroup
+      Tags:
+        - Key: 'Name'
+          Value: !Sub "${AWS::StackName}-DBSG"
+
+# Load Balancers
+  ELBInstance:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: true
+      LoadBalancerName: !Sub "${AWS::StackName}-ELB"
+      Listeners:
+        - Protocol: "HTTP"
+          LoadBalancerPort: 80
+          InstanceProtocol:  "HTTP"
+          InstancePort: 80      
+        - Protocol: "HTTPS"
+          LoadBalancerPort: 443
+          InstanceProtocol:  "HTTPS"
+          InstancePort: 443
+          SSLCertificateId: !Ref SSLCertificate          
+      HealthCheck:
+        Target: "HTTPS:443/"
+        HealthyThreshold: '3'
+        UnhealthyThreshold: '5'
+        Interval: '30'
+        Timeout: '5'
+      Subnets:
+        - Fn::ImportValue:
+            !Sub "${EnvStack}-PubAZa"
+        - Fn::ImportValue:
+            !Sub "${EnvStack}-PubAZb"
+      SecurityGroups:
+      - !Ref LBSecurityGroup
+      Scheme: "internet-facing"
+      Tags:
+        - Key: 'Name'
+          Value: !Sub "${AWS::StackName}-ELB"
+
+# Database
+  DBSubnet:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: "DB SubnetGroup"
+      SubnetIds: 
+        - Fn::ImportValue:
+            !Sub "${EnvStack}-PrivAZa"
+        - Fn::ImportValue:
+            !Sub "${EnvStack}-PrivAZb" 
+      Tags: 
+        - Key: 'Name'
+          Value: !Sub "${AWS::StackName}-DBSubnetGroup"
+  MyDB :
+    Type : AWS::RDS::DBInstance
+    Properties: 
+      AllocatedStorage: !Ref DBAllocatedStorage
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine : "MySQL"
+      EngineVersion : "5.5"
+      PubliclyAccessible: false
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnet
+      DBSnapshotIdentifier: !Ref DBSnapshot
+      MasterUsername : !Ref DBUser
+      MasterUserPassword : !Ref DBPassword
+      Tags:
+        - Key: "Name"
+          Value : !Sub "${AWS::StackName}-DB"
+ 
+    DeletionPolicy: "Snapshot"
+
+# AutoScaling
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: false
+      EbsOptimized: false
+      ImageId: !Ref AMIID
+      InstanceMonitoring: false
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+        - !Ref WebSecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              #!/bin/bash -x
+              TMPDIR="/root/temp"
+              mkdir -p $TMPDIR
+              myfqdn=`/bin/hostname -s`.test
+              /bin/hostname ${!myfqdn}
+              echo ${!myfqdn} > /etc/hostname
+              echo "${PuppetIP} puppet.test" >>/etc/hosts
+              sudo rpm -Uvh https://yum.puppet.com/puppet5/puppet5-release-el-7.noarch.rpm
+              yum install -y puppet wget
+              wget -q https://raw.githubusercontent.com/dariuspunzalan/WebStack/master/puppet.conf -O /etc/puppetlabs/puppet/puppet.conf
+              mkdir -p /opt/puppetlabs/facter/facts.d/
+              echo "myelbaddress : ${LB_address}" >> /opt/puppetlabs/facter/facts.d/custom.yaml
+              echo "dbpath : ${DBAddress}" >> /opt/puppetlabs/facter/facts.d/custom.yaml
+              echo "dbuser : ${DBUser}" >> /opt/puppetlabs/facter/facts.d/custom.yaml
+              echo "dbpassword : ${DBPassword}" >> /opt/puppetlabs/facter/facts.d/custom.yaml
+              echo "dbname : ${DBName}" >> /opt/puppetlabs/facter/facts.d/custom.yaml
+              
+              service puppet start
+              sleep 5
+              /opt/puppetlabs/bin/puppet resource service puppet ensure=running
+              sleep 5
+              /opt/puppetlabs/bin/puppet agent
+          
+            - PuppetIP:
+                Fn::ImportValue: PuppetServerIP
+              LB_address:
+                !GetAtt ELBInstance.DNSName
+              DBAddress:
+                !GetAtt MyDB.Endpoint.Address
+              
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn:
+      - LaunchConfig
+    Properties:
+      DesiredCapacity: 2
+      LaunchConfigurationName: !Ref LaunchConfig
+      LoadBalancerNames: 
+        - !Ref ELBInstance
+      MaxSize: 3
+      MinSize: 1
+      HealthCheckType: ELB  
+      HealthCheckGracePeriod: 900
+      VPCZoneIdentifier:
+        - Fn::ImportValue:
+            !Sub "${EnvStack}-PrivAZa"
+        - Fn::ImportValue:
+            !Sub "${EnvStack}-PrivAZb"
+      Tags:
+        - Key: 'Name'
+          Value: !Sub "${AWS::StackName}-WebServer"
+          PropagateAtLaunch: true
+
+Outputs:
+  WebAddress:
+    Value: !Sub ["http://${URL}", URL: !GetAtt ELBInstance.DNSName]
+    Export:
+      Name: !Sub "${AWS::StackName}-WebUrl"
