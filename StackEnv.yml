@@ -1,9 +1,9 @@
 ---
 - name: Create AWS env stack
   cloudformation:
-    stack_name: "StackEnv"-{{ environment }}
+    stack_name: "StackEnv-{{ environment }}"
     state: present
-    region: "{{region}}"
+    region: "{{ region }}"
     template_body: "{lookup('template', 'aws_env.j2') }}"
     template_parameters:
       CidrIPBlock: "{{ cidr }}"
